@@ -31,9 +31,9 @@
         for (int i = 0; i < 3; i++) {
             if (departmentErrorCount > 0) {
                 subCompanyList = synSubCompany(subCompanyList, i);
+                departmentErrorCount = subCompanyList.size();
+                baseBean.writeLog("待插入分部数量： " + departmentErrorCount);
             }
-            departmentErrorCount = subCompanyList.size();
-            baseBean.writeLog("待插入分部数量： " + departmentErrorCount);
         }
 
         // 清空分部缓存
@@ -55,8 +55,7 @@
         response.setHeader("Content-Type", "application/json;charset=UTF-8");
         out.clear();
         out.print(jsonObjectAll.toJSONString());
-        // 插入日志
-        //GdConnUtil.insertTimedLog("HrmDepartment", logStr, allCount);
+
     } catch (Exception e) {
         baseBean.writeLog("分部同步异常： " + e);
     }
@@ -118,12 +117,13 @@
             }
 
             int subCompanyId = Util.getIntValue(numIdMap.get(supperCode), 0);
-            if (!subCode.equals(supperCode) && subCompanyId <= 0) {
+            if (!"0".equals(supperCode) && subCompanyId <= 0) {
                 if (count >= 2) {
                     String errMes = "上级分部不存在 - 分部编码 - " + subCode + " - 分部名称 - " + subCompany.getSubName();
                     //第3次仍有错误，插入错误信息
                     baseBean.writeLog(errMes);
                     subCompany.setErrMessage(errMes);
+                    errorHrmDepartments.add(subCompany);
                 }
                 errorHrmDepartments.add(subCompany);
                 continue;
@@ -132,20 +132,17 @@
             subCompany.setSupperSubId(String.valueOf(subCompanyId));
             if (numIdMap.get(subCode) == null) {
                 insertHrmDepartments.add(subCompany);
-                numIdMap.put(subCode, "");
+                numIdMap.put(subCode, "1");
             } else {
                 updateHrmDepartments.add(subCompany);
             }
 
-            baseBean.writeLog("新增分部数： " + insertHrmDepartments.size());
             insertHrmSubCompany(insertHrmDepartments);
-
-            baseBean.writeLog("更新分部数： " + updateHrmDepartments.size());
             updateHrmSubCompany(updateHrmDepartments);
-
-            // 清空map缓存
-            clearMap(numIdMap);
         }
+
+        // 清空map缓存
+        clearMap(numIdMap);
         return errorHrmDepartments;
     }
 
@@ -209,7 +206,7 @@
                 statement.executeUpdate();
             }
         } catch (Exception e) {
-            new BaseBean().writeLog("update department Exception :" + e);
+            new BaseBean().writeLog("update hrmsubcompany Exception :" + e);
         } finally {
             statement.close();
         }
