@@ -37,7 +37,7 @@
         baseBean.writeLog(logStr);
         JSONObject jsonObjectAll = new JSONObject(true);
         jsonObjectAll.put("AllCount", allCount);
-        jsonObjectAll.put("errorCount", subJobTitleList.size());
+        jsonObjectAll.put("errorCount", 0);
         jsonObjectAll.put("errList", Collections.EMPTY_LIST);
 
         baseBean.writeLog("返回的json： " + jsonObjectAll.toJSONString());
@@ -87,7 +87,7 @@
         BaseBean baseBean = new BaseBean();
         ConnStatement statement = new ConnStatement();
         try {
-            String sql = "insert into hrmjobtitles (jobtitlename, jobtitlemark, jobactivityid, jobtitlecode )values (?,?,?,?,?, ?,?)";
+            String sql = "insert into hrmjobtitles (jobtitlename, jobtitlemark, jobactivityid, jobtitlecode )values (?,?,?,?)";
             statement.setStatementSql(sql);
             for (BjcjHrmJobTitle subCompany : insertHrmDepartments) {
                 baseBean.writeLog(subCompany.toString());

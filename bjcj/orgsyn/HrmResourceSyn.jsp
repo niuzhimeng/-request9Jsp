@@ -1,6 +1,6 @@
 <%@ page import="com.alibaba.fastjson.JSONArray" %>
 <%@ page import="com.alibaba.fastjson.JSONObject" %>
-<%@ page import="com.weavernorth.gaodeng.orgsyn.vo.GdHrmResource" %>
+
 <%@ page import="weaver.conn.ConnStatement" %>
 <%@ page import="weaver.conn.RecordSet" %>
 <%@ page import="weaver.general.BaseBean" %>
@@ -12,11 +12,9 @@
 <%@ page import="java.util.HashMap" %>
 <%@ page import="java.util.List" %>
 <%@ page import="java.util.Map" %>
+<%@ page import="com.weavernorth.bjcj.vo.BjcjHrmResource" %>
 <%@ page language="java" contentType="text/html; charset=UTF-8" %>
 <%
-
-    // 老师岗位id
-    String teacherId = "63";
 
     BaseBean baseBean = new BaseBean();
     // 人员同步
@@ -27,10 +25,10 @@
         JSONArray jsonArray = JSONObject.parseArray(json);
         int allCount = jsonArray.size();
         baseBean.writeLog("接收人员数量: " + allCount);
-        List<GdHrmResource> HrmResourceList = jsonArray.toJavaList(GdHrmResource.class);
+        List<BjcjHrmResource> HrmResourceList = jsonArray.toJavaList(BjcjHrmResource.class);
 
         // 错误人员数据信息
-        List<GdHrmResource> errHrmResourceList = synHrmResource(HrmResourceList, teacherId);
+        List<BjcjHrmResource> errHrmResourceList = synHrmResource(HrmResourceList);
 
         JSONObject jsonObjectAll = new JSONObject(true);
         jsonObjectAll.put("AllCount", allCount);
@@ -53,12 +51,12 @@
 
 <%!
 
-    private List<GdHrmResource> synHrmResource(List<GdHrmResource> resourceList, String teacherId) {
-        List<GdHrmResource> errHrmResourceList = new ArrayList<GdHrmResource>();
+    private List<BjcjHrmResource> synHrmResource(List<BjcjHrmResource> resourceList) {
+        List<BjcjHrmResource> errHrmResourceList = new ArrayList<>();
         BaseBean baseBean = new BaseBean();
         try {
             // departmentCode - id map
-            Map<String, String> depIdMap = new HashMap<String, String>();
+            Map<String, String> depIdMap = new HashMap<>();
             RecordSet recordSet = new RecordSet();
             recordSet.executeQuery("select id, departmentcode from HrmDepartment");
             while (recordSet.next()) {
@@ -68,7 +66,7 @@
             }
 
             // 部门 - id 所属分部id
-            Map<Integer, Integer> idSubIdMap = new HashMap<Integer, Integer>();
+            Map<Integer, Integer> idSubIdMap = new HashMap<>();
             recordSet.executeQuery("select id, subcompanyid1 from hrmdepartment");
             while (recordSet.next()) {
                 if (!"".equals(recordSet.getString("subcompanyid1"))) {
@@ -76,35 +74,55 @@
                 }
             }
 
-            List<String> loginIdList = new ArrayList<String>();
-            recordSet.executeQuery("select loginid from hrmresource");
+            // 岗位编码 - 岗位id
+            Map<String, String> jobCodeIdMap = new HashMap<>();
+            recordSet.executeQuery("select id, jobtitlecode from hrmjobtitles");
             while (recordSet.next()) {
-                if (!"".equals(recordSet.getString("loginid"))) {
-                    loginIdList.add(recordSet.getString("loginid"));
+                if (!"".equals(recordSet.getString("jobtitlecode"))) {
+                    jobCodeIdMap.put(recordSet.getString("jobtitlecode"), recordSet.getString("id"));
                 }
             }
 
-            List<GdHrmResource> insertHrmResource = new ArrayList<GdHrmResource>();
-            List<GdHrmResource> updateHrmResource = new ArrayList<GdHrmResource>();
-            for (GdHrmResource hrmResource : resourceList) {
-                // 登录名（唯一标识）
+            // 根据【身份证】判断人员是否存在
+            List<String> existList = new ArrayList<>();
+            recordSet.executeQuery("select certificatenum from hrmresource");
+            while (recordSet.next()) {
+                if (!"".equals(recordSet.getString("certificatenum"))) {
+                    existList.add(recordSet.getString("certificatenum"));
+                }
+            }
+
+            List<BjcjHrmResource> insertHrmResource = new ArrayList<>();
+            List<BjcjHrmResource> updateHrmResource = new ArrayList<>();
+            for (BjcjHrmResource hrmResource : resourceList) {
+                // 身份证号码（唯一标识）
+                String certificatenum = Util.null2String(hrmResource.getCertificatenum()).trim();
+                // 岗位编码
+                String jobtitlecode = Util.null2String(hrmResource.getJobtitlecode()).trim();
+                // 登录名
                 String loginId = Util.null2String(hrmResource.getLoginid()).trim();
                 // 所属部门编码
                 String depCode = Util.null2String(hrmResource.getDepcode()).trim();
                 // 员工状态（Y在职，N离职，R退休）
                 String mhStatus = Util.null2String(hrmResource.getStatus()).trim();
                 String statusOa = "1";
-                if ("N".equalsIgnoreCase(mhStatus)) {
-                    statusOa = "5";
-                } else if ("R".equalsIgnoreCase(mhStatus)) {
+                if ("1".equals(mhStatus) || "2".equals(mhStatus) || "3".equals(mhStatus) || "7".equals(mhStatus) || "8".equals(mhStatus) || "9".equals(mhStatus)) {
+                    statusOa = "1";
+                } else if ("4".equals(mhStatus) || "5".equals(mhStatus)) {
+                    statusOa = "0";
+                } else if ("37".equals(mhStatus)) {
                     statusOa = "6";
+                } else if ("38".equals(mhStatus)) {
+                    statusOa = "5";
+                } else if ("39".equals(mhStatus)) {
+                    statusOa = "7";
                 }
 
-                // 性别（M男，F女）
+                // 性别（1男，2女）
                 String sex = Util.null2String(hrmResource.getSex()).trim();
-                String sexOa = "0";
-                if ("F".equalsIgnoreCase(sex)) {
-                    sexOa = "1";
+                String sexOa = "1";
+                if ("1".equals(sex)) {
+                    sexOa = "0";
                 }
                 // 工作地点
                 String locationStr = Util.null2String(hrmResource.getLocation()).trim();
@@ -115,31 +133,42 @@
                 String telPhone = Util.null2String(hrmResource.getTelephone());
 
                 baseBean.writeLog("========================");
-                baseBean.writeLog("人员姓名： " + hrmResource.getLastname() + ", 登录名： " + loginId);
-                baseBean.writeLog("所属部门编码： " + depCode + ", mhStatus： " + mhStatus);
+                baseBean.writeLog("人员姓名： " + hrmResource.getLastname() + ", 身份证号码：" + certificatenum + ", 登录名： " + loginId);
+                baseBean.writeLog("所属部门编码： " + depCode + ", hrStatus： " + mhStatus + ", 岗位编码： " + jobtitlecode);
                 baseBean.writeLog("性别： " + sex + ", 工作地点： " + locationStr + ", 办公室电话: " + telPhone);
 
                 //部门ID
                 int depId = Util.getIntValue(depIdMap.get(depCode), 0);
 
+                if ("".equals(certificatenum)) {
+                    // 身份证号码为空
+                    String errMsg = "人员【身份证号码】为空，部门code： " + depCode + " ,人员编码： " + hrmResource.getWorkcode() + ", 姓名： " + hrmResource.getLastname();
+                    baseBean.writeLog(errMsg);
+                    hrmResource.setErrMessage(errMsg);
+                    errHrmResourceList.add(hrmResource);
+                    continue;
+                }
                 if ("".equals(loginId)) {
                     // 登录名为空
-                    baseBean.writeLog("人员【登录名】为空，部门code： " + depCode + " ,人员编码： " + hrmResource.getWorkcode() + ", 姓名： " + hrmResource.getLastname());
-                    hrmResource.setErrMessage("人员【登录名】为空，部门code： " + depCode + " ,人员编码： " + hrmResource.getWorkcode() + ", 姓名： " + hrmResource.getLastname());
+                    String errMsg = "人员【登录名】为空，部门code： " + depCode + " ,人员编码： " + hrmResource.getWorkcode() + ", 姓名： " + hrmResource.getLastname();
+                    baseBean.writeLog(errMsg);
+                    hrmResource.setErrMessage(errMsg);
                     errHrmResourceList.add(hrmResource);
                     continue;
                 }
                 if ("".equals(Util.null2String(hrmResource.getLastname()).trim())) {
                     // 姓名为空
-                    baseBean.writeLog("人员【姓名】为空，部门code： " + depCode + " , 登录名： " + loginId + ", 姓名： " + hrmResource.getLastname());
-                    hrmResource.setErrMessage("人员【姓名】为空，部门code： " + depCode + " ,登录名： " + loginId + ", 姓名： " + hrmResource.getLastname());
+                    String errMsg = "人员【姓名】为空，部门code： " + depCode + " , 登录名： " + loginId + ", 姓名： " + hrmResource.getLastname();
+                    baseBean.writeLog(errMsg);
+                    hrmResource.setErrMessage(errMsg);
                     errHrmResourceList.add(hrmResource);
                     continue;
                 }
                 if (depId <= 0) {
                     //所属部门不存在
-                    baseBean.writeLog("人员所属【部门】不存在，部门code： " + depCode + " ,登录名： " + loginId + ", 姓名： " + hrmResource.getLastname());
-                    hrmResource.setErrMessage("人员所属【部门】不存在，部门code： " + depCode + " ,登录名： " + loginId + ", 姓名： " + hrmResource.getLastname());
+                    String errMsg = "人员所属【部门】不存在，部门code： " + depCode + " ,登录名： " + loginId + ", 姓名： " + hrmResource.getLastname();
+                    baseBean.writeLog(errMsg);
+                    hrmResource.setErrMessage(errMsg);
                     errHrmResourceList.add(hrmResource);
                     continue;
                 }
@@ -151,7 +180,7 @@
                 hrmResource.setPassWord(Util.getEncrypt("123456"));
                 hrmResource.setDepId(String.valueOf(depId));
                 hrmResource.setSubId(String.valueOf(subId));
-                hrmResource.setJobtitleId(teacherId);
+                hrmResource.setJobtitleId(jobCodeIdMap.get(jobtitlecode));
                 hrmResource.setStatusOa(statusOa);
 
                 hrmResource.setSexOa(sexOa);
@@ -164,11 +193,11 @@
                 hrmResource.setSeclevel("10");
                 hrmResource.setTelephone(telPhone);
 
-                if (!loginIdList.contains(loginId)) {
+                if (!existList.contains(certificatenum)) {
                     String newId = String.valueOf(getHrmMaxId());
                     hrmResource.setId(newId);
                     insertHrmResource.add(hrmResource);
-                    loginIdList.add(loginId);
+                    existList.add(certificatenum);
                 } else {
                     updateHrmResource.add(hrmResource);
                 }
@@ -183,8 +212,8 @@
             new ResourceComInfo().removeResourceCache();
 
             // 清空map缓存
-            clearMap(depIdMap, idSubIdMap);
-            loginIdList.clear();
+            clearMap(depIdMap, idSubIdMap, jobCodeIdMap);
+            existList.clear();
         } catch (Exception e) {
             baseBean.writeLog("人员同步synHrmResource异常： " + e);
         }
@@ -205,17 +234,18 @@
         return maxID;
     }
 
-    private void insertHrmResource(List<GdHrmResource> insertHrmResourceList) {
+    private void insertHrmResource(List<BjcjHrmResource> insertHrmResourceList) {
         ConnStatement statement = new ConnStatement();
         try {
             String sql = "insert into hrmresource (workcode, lastname, loginid, status, sex," +
                     " locationid, email, mobile, managerid, seclevel, " +
                     "departmentid, subcompanyid1, jobtitle, dsporder, id," +
-                    "password, accounttype, belongto, systemlanguage, telephone) " +
-                    "values (?,?,?,?,?,  ?,?,?,?,?,  ?,?,?,?,?,  ?,?,?,?,?)";
+                    "password, accounttype, belongto, systemlanguage, telephone, " +
+                    "startdate, certificatenum ) " +
+                    "values (?,?,?,?,?,  ?,?,?,?,?,  ?,?,?,?,?,  ?,?,?,?,?, ?,?)";
             statement.setStatementSql(sql);
             int stnCount = 0;
-            for (GdHrmResource hrmResource : insertHrmResourceList) {
+            for (BjcjHrmResource hrmResource : insertHrmResourceList) {
                 if (stnCount % 500 == 0) {
                     statement.close();
                     statement = new ConnStatement();
@@ -245,6 +275,9 @@
                 statement.setString(19, hrmResource.getSystemlanguage());
                 statement.setString(20, hrmResource.getTelephone());
 
+                statement.setString(21, hrmResource.getStartdate());
+                statement.setString(22, hrmResource.getCertificatenum());
+
                 statement.executeUpdate();
                 hrmResource.updaterights(hrmResource.getId());
                 stnCount++;
@@ -256,15 +289,16 @@
         }
     }
 
-    private void updateHrmResource(List<GdHrmResource> updateHrmResourceList) {
+    private void updateHrmResource(List<BjcjHrmResource> updateHrmResourceList) {
 
         ConnStatement statement = new ConnStatement();
         try {
             String sql = "update hrmresource set lastname = ?, status = ?, sex = ?, locationid = ?, mobile = ?, " +
-                    "departmentid = ?, subcompanyid1 = ?, email = ?, workcode = ?, telephone = ? where loginid = ?";
+                    "departmentid = ?, subcompanyid1 = ?, email = ?, workcode = ?, telephone = ?, " +
+                    "loginid = ?, jobtitle = ? where certificatenum = ?";
             statement.setStatementSql(sql);
             int stnCount = 0;
-            for (GdHrmResource hrmResource : updateHrmResourceList) {
+            for (BjcjHrmResource hrmResource : updateHrmResourceList) {
                 if (stnCount % 500 == 0) {
                     statement.close();
                     statement = new ConnStatement();
@@ -283,6 +317,8 @@
                 statement.setString(10, hrmResource.getTelephone());
 
                 statement.setString(11, hrmResource.getLoginid());
+                statement.setString(12, hrmResource.getJobtitleId());
+                statement.setString(13, hrmResource.getCertificatenum());
 
                 statement.executeUpdate();
                 stnCount++;
@@ -302,8 +338,8 @@
 
         if ("".equals(locationId)) {
             RecordSet rs = new RecordSet();
-            rs.executeSql("insert into HrmLocations(locationname,locationdesc,countryid) values ('" + locationname + "','" + locationname + "','0')");
-            rs.executeSql("select max(id) as id from HrmLocations");
+            rs.executeUpdate("insert into HrmLocations(locationname,locationdesc,countryid) values ('" + locationname + "','" + locationname + "','0')");
+            rs.executeQuery("select max(id) as id from HrmLocations");
             if (rs.next()) {
                 locationId = Util.null2String(rs.getString("id"));
             }
@@ -315,7 +351,7 @@
         String locationId = "";
         try {
             RecordSet rs = new RecordSet();
-            rs.executeSql("select id from HrmLocations where locationname = '" + locationname + "'");
+            rs.executeQuery("select id from HrmLocations where locationname = '" + locationname + "'");
             if (rs.next()) {
                 locationId = Util.null2String(rs.getString("id"));
             }
